@@ -1,93 +1,32 @@
-using System.Buffers;
 using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
+using Rmauro.Servers.Memcached.Connections;
 using Serilog;
 
 namespace Rmauro.Servers.Memcached;
 
 public class MemcachedServerImp(int port = 8888) : IMemcachedServer
 {
-    readonly int _port = port;
-
     readonly ICommandResolver _commandResolver = new CommandResolver();
 
     readonly ConcurrentDictionary<string, string> _state = new();
 
     public async Task StartAsync()
     {
-        Log.Information("Starting server at {Port}", _port);
+        Log.Information("Starting server at {Port}", port);
 
         await Listen(CancellationToken.None);
     }
 
     async Task Listen(CancellationToken cancellationToken)
     {
-        using var listener = new TcpListener(IPAddress.Any, _port);
+        IConnectionResolver resolver = new TCPConnectionResolver(port, this);
 
-        listener.Start();
-
-        Log.Information("Starting to listen on port {Port}. Waiting for connections", _port);
-
-        while (cancellationToken.IsCancellationRequested == false)
-        {
-            using var client = await listener.AcceptTcpClientAsync(cancellationToken)
-                .ConfigureAwait(false);
-
-            Log.Information("Client has connected");
-
-            await ProcessClient(client, cancellationToken);
-        }
+        await resolver.StartAsync(cancellationToken);
     }
 
-    async Task ProcessClient(TcpClient client, CancellationToken cancellationToken)
+    public string? ProcessMessage(string message)
     {
-        using var networkStream = client.GetStream();
-
-        var buffer = ArrayPool<byte>.Shared.Rent(1024);
-
-        while (cancellationToken.IsCancellationRequested == false)
-        {
-            var bytesRead = await networkStream.ReadAsync(buffer, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (bytesRead == 0)
-            {
-                Log.Information("Zero bytes read. Disconnecting client");
-                break;
-            }
-
-            var msg = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            ArrayPool<byte>.Shared.Return(buffer);
-
-            Log.Debug("Got message {Payload}", msg);
-
-            var response = ProcessMessage(ref msg);
-            
-            if (string.IsNullOrEmpty(response))
-            {
-                Log.Information("Got no response to return. Ignoring message");
-                continue;
-            }
-
-            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
-
-            Log.Debug("Sending back {Payload}", response);
-
-            await networkStream.WriteAsync(responseBytes, cancellationToken)
-                .ConfigureAwait(false);
-
-            await networkStream.FlushAsync(cancellationToken)
-                .ConfigureAwait(false);
-
-            Log.Debug("Completed response");
-        }
-    }
-
-    string? ProcessMessage(ref string msg)
-    {
-        string[] cmd = _commandResolver.CommandArgs(ref msg);
+        string[] cmd = _commandResolver.CommandArgs(message);
 
         return cmd[0] switch
         {

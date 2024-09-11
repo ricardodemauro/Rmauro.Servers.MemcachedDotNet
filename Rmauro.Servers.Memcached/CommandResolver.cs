@@ -10,7 +10,7 @@ public class CommandResolver : ICommandResolver
 
     const char space = ' ';
 
-    public string[] CommandArgs(ref string command)
+    public string[] CommandArgs(string command)
     {
         ReadOnlySpan<char> span = command.AsSpan();
 

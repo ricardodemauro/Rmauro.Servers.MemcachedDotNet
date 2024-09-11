@@ -4,5 +4,5 @@ namespace Rmauro.Servers.Memcached;
 
 public interface ICommandResolver
 {
-    string[] CommandArgs(ref string command);
+    string[] CommandArgs(string command);
 }
