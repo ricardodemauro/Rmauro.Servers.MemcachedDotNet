@@ -1,6 +1,6 @@
 namespace Rmauro.Servers.Memcached;
 
-internal static class CommandResolver
+public class CommandResolver : ICommandResolver
 {
     const char cr = '\r';
 
@@ -8,36 +8,64 @@ internal static class CommandResolver
 
     const string crlf = "\r\n";
 
-    internal static string Command(ref string rawCommand)
+    const char space = ' ';
+
+    public string[] CommandArgs(ref string command)
     {
-        var span = rawCommand.AsSpan();
-        var idxCmd = span.IndexOf(' ');
+        ReadOnlySpan<char> span = command.AsSpan();
 
-        string cmd = new(span[..(idxCmd)]);
-        return cmd;
-    }
+        var lineIdx = span.IndexOf(lf);
 
-    internal static string GetArgument(ref string rawCommand)
-    {
-        var span = rawCommand.AsSpan();
-        var idxCmd = span.IndexOf(' ');
+        // Parse the command name
+        var nextIdx = span.IndexOf(space);
+        ReadOnlySpan<char> commandName = nextIdx > -1 ? span[..nextIdx] : span[..lineIdx];
 
-        string cmd = new(span[..(idxCmd - 1)]);
-        return cmd;
-    }
+        switch (commandName.ToString())
+        {
+            case Commands.Add:
+            case Commands.Set:
+                span = span[(nextIdx + 1)..];
+                nextIdx = span.IndexOf(space);
+                ReadOnlySpan<char> key = span[..nextIdx];
 
-    internal static string[] Resolve(string rawCommand)
-    {
-        var span = rawCommand.AsSpan();
+                span = span[(nextIdx + 1)..];
+                nextIdx = span.IndexOf(space);
+                ReadOnlySpan<char> flags = span[..nextIdx];
 
-        var idx = span.IndexOf(cr);
-        if (idx == -1) throw new FormatException("Invalid message format");
+                span = span[(nextIdx + 1)..];
+                nextIdx = span.IndexOf(space);
+                ReadOnlySpan<char> expiration = span[..nextIdx];
 
-        if (idx == rawCommand.Length) return [rawCommand];
+                span = span[(nextIdx + 1)..];
+                nextIdx = span.IndexOf(cr);
+                ReadOnlySpan<char> bytes = span[..nextIdx];
 
-        string arg1 = new(span.Slice(0, idx - 1));
-        string arg2 = new(span.Slice(idx, span.Length - 1));
+                span = span[(nextIdx + 2)..];
+                nextIdx = span.IndexOf(cr);
+                ReadOnlySpan<char> data = span[..nextIdx];
 
-        return [arg1, arg2];
+                return
+                [
+                    commandName.ToString(),
+                    key.ToString(),
+                    flags.ToString(),
+                    expiration.ToString(),
+                    bytes.ToString(),
+                    data.ToString()
+                ];
+
+            case Commands.Get:
+                span = span[(nextIdx + 1)..];
+                nextIdx = span.IndexOf(lf);
+                ReadOnlySpan<char> key2 = span[..nextIdx];
+
+                return [commandName.ToString(), key2.ToString()];
+
+            case Commands.FlushAll:
+                return [commandName.ToString()];
+
+            
+        }
+        return [];
     }
 }

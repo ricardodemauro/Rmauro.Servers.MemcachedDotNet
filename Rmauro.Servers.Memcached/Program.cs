@@ -11,5 +11,5 @@ Log.Logger = new LoggerConfiguration()
 
 Log.Information("Hello, World!");
 
-IMemcachedServer server = new MemcachedServerImp(11211);
+IMemcachedServer server = new MemcachedServerImp(8888);
 await server.StartAsync();

@@ -11,6 +11,8 @@ public class MemcachedServerImp(int port = 8888) : IMemcachedServer
 {
     readonly int _port = port;
 
+    readonly ICommandResolver _commandResolver = new CommandResolver();
+
     readonly ConcurrentDictionary<string, string> _state = new();
 
     public async Task StartAsync()
@@ -62,11 +64,13 @@ public class MemcachedServerImp(int port = 8888) : IMemcachedServer
             Log.Debug("Got message {Payload}", msg);
 
             var response = ProcessMessage(ref msg);
-            if(string.IsNullOrEmpty(response))
+            
+            if (string.IsNullOrEmpty(response))
             {
-                Log.Information("Got no response to return. Disconnecting client");
-                break;
+                Log.Information("Got no response to return. Ignoring message");
+                continue;
             }
+
             byte[] responseBytes = Encoding.UTF8.GetBytes(response);
 
             Log.Debug("Sending back {Payload}", response);
@@ -83,27 +87,43 @@ public class MemcachedServerImp(int port = 8888) : IMemcachedServer
 
     string? ProcessMessage(ref string msg)
     {
-        string cmd = CommandResolver.Command(ref msg);
+        string[] cmd = _commandResolver.CommandArgs(ref msg);
 
-        return cmd switch
+        return cmd[0] switch
         {
             "" => string.Empty,
-            Commands.Get => ProcessGet(CommandResolver.GetArgument(ref msg)),
-            Commands.FlushAll => ProcessFlushAll(CommandResolver.GetArgument(ref msg)),
-            Commands.Set => ProcessSet(CommandResolver.GetArgument(ref msg)),
+            Commands.Get => ProcessGet(cmd[1]),
+            Commands.FlushAll => ProcessFlushAll(),
+            Commands.Add => ProcessAdd(cmd[1], cmd[2], cmd[3], cmd[4], cmd[5]),
+            Commands.Set => ProcessSet(cmd[1], cmd[2], cmd[3], cmd[4], cmd[5]),
             _ => throw new ArgumentOutOfRangeException("command"),
         };
     }
 
-    private string ProcessFlushAll(string args)
+    private string ProcessAdd(string key, string flags, string expiration, string bytesLen, string data)
     {
-        return string.Empty;
+        if(_state.ContainsKey(key)) return "NOT_STORED\n";
+       _state[key] = data;
+        return "STORED\n";   
     }
 
-    string? ProcessGet(string args) => _state.GetValueOrDefault(args);
-
-    string ProcessSet(string args)
+    private string ProcessFlushAll()
     {
-        return string.Empty;
+        _state.Clear();
+        return "OK\n";
+    }
+
+    string? ProcessGet(string args)
+    {
+        string? val = _state.GetValueOrDefault(args);
+        if(string.IsNullOrEmpty(val)) return "END\n";
+
+        return $"{val}\nEND\n";
+    }
+
+    string ProcessSet(string key, string flags, string expiration, string bytesLen, string data)
+    {
+        _state[key] = data;
+        return "STORED\n";
     }
 }
