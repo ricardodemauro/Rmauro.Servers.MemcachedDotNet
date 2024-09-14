@@ -9,13 +9,15 @@ namespace Rmauro.Servers.Memcached.Connections;
 
 public class PipelinesConnectionResolver(int port, IMemcachedServer server) : IConnectionResolver
 {
+    int connectedClients = 0;
+
     readonly int _port = port;
 
     readonly IMemcachedServer _server = server;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Starting server at {Port}", _port);
+        Log.Warning("Starting server PipelinesConnectionResolver at {Port}", _port);
 
         await Listen(cancellationToken);
     }
@@ -30,37 +32,51 @@ public class PipelinesConnectionResolver(int port, IMemcachedServer server) : IC
 
         while (cancellationToken.IsCancellationRequested == false)
         {
-            using var client = await listener.AcceptTcpClientAsync(cancellationToken)
+            var client = await listener.AcceptTcpClientAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             Log.Information("Client has connected");
 
-            await ProcessClient(client, cancellationToken);
+            _ = ProcessClient(client, cancellationToken);
         }
     }
 
     async Task ProcessClient(TcpClient client, CancellationToken cancellationToken)
     {
+        //Interlocked.Increment(ref connectedClients);
+
+        Log.Debug("Connected with {RemoteEndPoint}. Total clients connected is {ConnectedClients}",
+                        client.Client.RemoteEndPoint,
+                        connectedClients);
+
         var pipe = new Pipe();
 
-        var reading = FillPipeAsync(client.Client, pipe.Writer);
-        var writing = ReadPipeAsync(pipe.Reader, client.Client);
+        var reading = FillPipeAsync(client.Client, pipe.Writer, cancellationToken);
+        var writing = ReadPipeAsync(client.Client, pipe.Reader, cancellationToken);
 
         await Task.WhenAll(reading, writing);
+
+        //Interlocked.Decrement(ref connectedClients);
+
+        Log.Debug("Disconnecting client. Total clients connected is {ConnectedClients}",
+                    connectedClients);
+
+        client.Dispose();
     }
 
-    async Task FillPipeAsync(Socket socket, PipeWriter writer)
+    async Task FillPipeAsync(Socket socket, PipeWriter writer, CancellationToken cancellationToken)
     {
         const int minimumBufferSize = 512;
 
-        while (true)
+        while (cancellationToken.IsCancellationRequested == false)
         {
             try
             {
                 var memory = writer.GetMemory(minimumBufferSize);
-                int bytesRead = await socket.ReceiveAsync(memory, SocketFlags.None);
+                int bytesRead = await socket.ReceiveAsync(memory, SocketFlags.None, cancellationToken);
                 if (bytesRead == 0)
                 {
+                    Log.Debug("Disconnecting client.");
                     break;
                 }
 
@@ -72,7 +88,7 @@ public class PipelinesConnectionResolver(int port, IMemcachedServer server) : IC
                 break;
             }
 
-            var result = await writer.FlushAsync();
+            var result = await writer.FlushAsync(cancellationToken);
 
             if (result.IsCompleted)
             {
@@ -83,17 +99,27 @@ public class PipelinesConnectionResolver(int port, IMemcachedServer server) : IC
         await writer.CompleteAsync();
     }
 
-    async Task ReadPipeAsync(PipeReader reader, Socket socket)
+    async Task ReadPipeAsync(Socket socket, PipeReader reader, CancellationToken cancellationToken)
     {
-        while (true)
+        while (cancellationToken.IsCancellationRequested == false)
         {
-            ReadResult result = await reader.ReadAsync();
+            ReadResult result = await reader.ReadAsync(cancellationToken);
             ReadOnlySequence<byte> buffer = result.Buffer;
 
-            while (TryReadLine(ref buffer, out ReadOnlySequence<byte> line))
+            if (cancellationToken.IsCancellationRequested)
+                break;
+
+            if (buffer.Length > 0)
             {
-                // Process the line.
-                ProcessLine(line, socket);
+                var message = Encoding.UTF8.GetString(buffer);
+                Log.Debug($"Received: {message}");
+
+                var response = _server.ProcessMessage(message) ?? string.Empty;
+
+                // Echo the message back to the client
+                byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+
+                await socket.SendAsync(responseBytes, SocketFlags.None, cancellationToken);
             }
 
             // Tell the PipeReader how much of the buffer has been consumed.
@@ -102,39 +128,12 @@ public class PipelinesConnectionResolver(int port, IMemcachedServer server) : IC
             // Stop reading if there's no more data coming.
             if (result.IsCompleted)
             {
+                Log.Information("Disconecting client");
                 break;
             }
         }
 
         // Mark the PipeReader as complete.
         await reader.CompleteAsync();
-    }
-
-    bool TryReadLine(ref ReadOnlySequence<byte> buffer, out ReadOnlySequence<byte> line)
-    {
-        // Look for a EOL in the buffer.
-        SequencePosition? position = buffer.PositionOf((byte)'\n');
-
-        if (position == null)
-        {
-            line = default;
-            return false;
-        }
-
-        // Skip the line + the \n.
-        line = buffer.Slice(0, position.Value);
-        buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
-        return true;
-    }
-
-    static void ProcessLine(ReadOnlySequence<byte> line, Socket socket)
-    {
-        var message = Encoding.UTF8.GetString(line.ToArray());
-        Console.WriteLine($"Received: {message}");
-
-        // Echo the message back to the client
-        byte[] responseBytes = Encoding.UTF8.GetBytes(message);
-
-        socket.Send(responseBytes, SocketFlags.None);
     }
 }

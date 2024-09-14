@@ -8,13 +8,17 @@ namespace Rmauro.Servers.Memcached.Connections;
 
 public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnectionResolver
 {
+    int _connectedClients = 0;
+
+    readonly int _maxClients = 100;
+
     readonly int _port = port;
 
     readonly IMemcachedServer _server = server;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Log.Information("Starting server at {Port}", _port);
+        Log.Warning("Starting server TCPConnectionResolver at {Port}", _port);
 
         await Listen(cancellationToken);
     }
@@ -29,12 +33,16 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
 
         while (cancellationToken.IsCancellationRequested == false)
         {
-            using var client = await listener.AcceptTcpClientAsync(cancellationToken)
+            var client = await listener.AcceptTcpClientAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            Log.Information("Client has connected");
+            //Interlocked.Add(ref _connectedClients, 1);
+            Log.Information("Client {RemoteEndPoint} has connected. Total clients connected is {ConnectedClients}",
+                client.Client.RemoteEndPoint,
+                _connectedClients);
 
-            await ProcessClient(client, cancellationToken);
+
+            _ = ProcessClient(client, cancellationToken);
         }
     }
 
@@ -42,16 +50,21 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
     {
         using var networkStream = client.GetStream();
 
-        var buffer = ArrayPool<byte>.Shared.Rent(1024);
-
         while (cancellationToken.IsCancellationRequested == false)
         {
+            var buffer = ArrayPool<byte>.Shared.Rent(1024);
+
             var bytesRead = await networkStream.ReadAsync(buffer, cancellationToken)
                 .ConfigureAwait(false);
 
             if (bytesRead == 0)
             {
-                Log.Information("Zero bytes read. Disconnecting client");
+                Interlocked.Decrement(ref _connectedClients);
+                Log.Information("Client {RemoteEndPoint} disconnected. Total clients connected is {ConnectedClients}",
+                    client.Client.RemoteEndPoint,
+                    _connectedClients);
+
+                client.Dispose();
                 break;
             }
 
@@ -61,7 +74,7 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
             Log.Debug("Got message {Payload}", msg);
 
             var response = _server.ProcessMessage(msg);
-            
+
             if (string.IsNullOrEmpty(response))
             {
                 Log.Information("Got no response to return. Ignoring message");
@@ -72,13 +85,19 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
 
             Log.Debug("Sending back {Payload}", response);
 
-            await networkStream.WriteAsync(responseBytes, cancellationToken)
-                .ConfigureAwait(false);
+            // await networkStream.WriteAsync(responseBytes, cancellationToken)
+            //     .ConfigureAwait(false);
 
-            await networkStream.FlushAsync(cancellationToken)
-                .ConfigureAwait(false);
+            // await networkStream.FlushAsync(cancellationToken)
+            //     .ConfigureAwait(false);
 
-            Log.Debug("Completed response");
+            networkStream.Write(responseBytes);
+
+            networkStream.Flush();
+
+            Log.Debug("Flushed Stream");
+
+            //break;
         }
     }
 }

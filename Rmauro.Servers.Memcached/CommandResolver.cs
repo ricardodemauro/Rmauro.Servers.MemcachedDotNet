@@ -42,7 +42,7 @@ public class CommandResolver : ICommandResolver
 
                 span = span[(nextIdx + 2)..];
                 nextIdx = span.IndexOf(cr);
-                ReadOnlySpan<char> data = span[..nextIdx];
+                ReadOnlySpan<char> data = span[..(nextIdx > -1 ? nextIdx : span.Length)];
 
                 return
                 [
@@ -64,7 +64,7 @@ public class CommandResolver : ICommandResolver
             case Commands.FlushAll:
                 return [commandName.ToString()];
 
-            
+
         }
         return [];
     }

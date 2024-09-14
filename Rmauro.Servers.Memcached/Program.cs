@@ -1,15 +1,12 @@
-﻿// See https://aka.ms/new-console-template for more information
-using System.Collections.Concurrent;
-using System.Net.Sockets;
-using Rmauro.Servers.Memcached;
+﻿using Rmauro.Servers.Memcached;
 using Serilog;
-
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
+    .MinimumLevel.Warning()
     .CreateLogger();
 
-Log.Information("Hello, World!");
+Console.WriteLine("Starting at 8888");
 
 var server = new MemcachedServerImp(8888);
 await server.StartAsync();
