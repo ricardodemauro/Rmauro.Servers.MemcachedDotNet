@@ -1,4 +1,5 @@
 ﻿using Rmauro.Servers.Memcached;
+using Rmauro.Servers.Memcached.Listeners;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -8,5 +9,8 @@ Log.Logger = new LoggerConfiguration()
 
 Console.WriteLine("Starting at 8888");
 
-var server = new MemcachedServerImp(8888);
-await server.StartAsync();
+var server = SupaServer.CreateBuilder(args)
+    .UseTcpClientListener(8888)
+    .Build();
+
+await server.Start(CancellationToken.None);
