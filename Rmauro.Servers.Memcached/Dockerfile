@@ -7,10 +7,12 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["Rmauro.Servers.Memcached/Rmauro.Servers.Memcached.csproj", "Rmauro.Servers.Memcached/"]
-RUN dotnet restore "./Rmauro.Servers.Memcached/Rmauro.Servers.Memcached.csproj"
+
+COPY ["Rmauro.Servers.Memcached.csproj", "Rmauro.Servers.Memcached.csproj"]
+RUN dotnet restore "./Rmauro.Servers.Memcached.csproj"
 COPY . .
-WORKDIR "/src/Rmauro.Servers.Memcached"
+
+WORKDIR "/src"
 RUN dotnet build "./Rmauro.Servers.Memcached.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
