@@ -10,7 +10,7 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
 {
     int _connectedClients = 0;
 
-    readonly int _maxClients = 100;
+    readonly int _maxClients = 250;
 
     readonly int _port = port;
 
@@ -27,11 +27,11 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
     {
         using var listener = new TcpListener(IPAddress.Any, _port);
 
-        listener.Start();
+        listener.Start(_maxClients);
 
         Log.Information("Starting to listen on port {Port}. Waiting for connections", _port);
 
-        while (cancellationToken.IsCancellationRequested == false)
+        while (true)
         {
             var client = await listener.AcceptTcpClientAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -42,24 +42,24 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
                 _connectedClients);
 
 
-            _ = ProcessClient(client, cancellationToken);
+            _ = Task.Factory.StartNew(async () => await ProcessClient(client, cancellationToken), cancellationToken);
         }
     }
 
-    async Task ProcessClient(TcpClient client, CancellationToken cancellationToken)
+     async Task ProcessClient(TcpClient client, CancellationToken cancellationToken)
     {
         using var networkStream = client.GetStream();
 
-        while (cancellationToken.IsCancellationRequested == false)
-        {
-            var buffer = ArrayPool<byte>.Shared.Rent(1024);
+        var buffer = ArrayPool<byte>.Shared.Rent(4096);
 
+        while (true)
+        {
             var bytesRead = await networkStream.ReadAsync(buffer, cancellationToken)
                 .ConfigureAwait(false);
 
             if (bytesRead == 0)
             {
-                Interlocked.Decrement(ref _connectedClients);
+                //Interlocked.Decrement(ref _connectedClients);
                 Log.Information("Client {RemoteEndPoint} disconnected. Total clients connected is {ConnectedClients}",
                     client.Client.RemoteEndPoint,
                     _connectedClients);
@@ -68,12 +68,11 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
                 break;
             }
 
-            var msg = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-            ArrayPool<byte>.Shared.Return(buffer);
+            string msg = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-            Log.Debug("Got message {Payload}", msg);
+            //Log.Debug("Got message {Payload}", msg);
 
-            var response = _server.ProcessMessage(msg);
+            var response = _server.ProcessMessage(msg.AsSpan());
 
             if (string.IsNullOrEmpty(response))
             {
@@ -81,23 +80,19 @@ public class TCPConnectionResolver(int port, IMemcachedServer server) : IConnect
                 continue;
             }
 
-            byte[] responseBytes = Encoding.UTF8.GetBytes(response);
+            var sequence = new ReadOnlySequence<char>(response.AsMemory());
 
-            Log.Debug("Sending back {Payload}", response);
+            var responseBytes = Encoding.UTF8.GetBytes(sequence);
+                //.AsMemory();
 
-            // await networkStream.WriteAsync(responseBytes, cancellationToken)
-            //     .ConfigureAwait(false);
+            await networkStream.WriteAsync(responseBytes, cancellationToken)
+                .ConfigureAwait(false);
 
-            // await networkStream.FlushAsync(cancellationToken)
-            //     .ConfigureAwait(false);
+            //await networkStream.FlushAsync(cancellationToken)
+            //    .ConfigureAwait(false);
 
-            networkStream.Write(responseBytes);
-
-            networkStream.Flush();
-
-            Log.Debug("Flushed Stream");
-
-            //break;
+            //networkStream.Write(responseBytes.AsSpan());
         }
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 }

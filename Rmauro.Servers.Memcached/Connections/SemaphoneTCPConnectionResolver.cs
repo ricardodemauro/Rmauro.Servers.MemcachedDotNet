@@ -9,7 +9,7 @@ namespace Rmauro.Servers.Memcached.Connections;
 public class SemaphoneTCPConnectionResolver(int port, IMemcachedServer server) : IConnectionResolver
 {
 
-    const int MAX_CONNECTIONS = 250;
+    const int MAX_CONNECTIONS = 500;
 
     SemaphoreSlim _maxConnectionsSemaphore = new(MAX_CONNECTIONS, MAX_CONNECTIONS);
 
@@ -23,7 +23,7 @@ public class SemaphoneTCPConnectionResolver(int port, IMemcachedServer server) :
 
         var _listenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
-        _listenerSocket.Listen(100);
+        _listenerSocket.Listen(MAX_CONNECTIONS);
 
         _listenerSocket.NoDelay = true;
 
@@ -41,7 +41,7 @@ public class SemaphoneTCPConnectionResolver(int port, IMemcachedServer server) :
             await _maxConnectionsSemaphore.WaitAsync();
 
             // Handle the client connection asynchronously
-            _ = HandleClientAsync(socket, cancellationToken);
+            _ = Task.Factory.StartNew(async () => await HandleClientAsync(socket, cancellationToken));
 
         }
     }

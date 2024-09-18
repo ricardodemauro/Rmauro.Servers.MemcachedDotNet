@@ -9,7 +9,7 @@ public class MemcachedServerImp(int port = 11211) : IMemcachedServer
     readonly CommandResolver _commandResolver = new CommandResolver();
 
     // readonly ConcurrentDictionary<string, string> _state = new(Environment.ProcessorCount * 2, 20);
-    readonly ConcurrentDictionary<string, string> _state = new();
+    readonly ConcurrentDictionary<string, string> _state = new(Environment.ProcessorCount * 2, 200);
 
     public async Task StartAsync()
     {
@@ -20,40 +20,44 @@ public class MemcachedServerImp(int port = 11211) : IMemcachedServer
 
     async Task Listen(CancellationToken cancellationToken)
     {
-        #if TCP_RESOLVER
-        TCPConnectionResolver resolver = new TCPConnectionResolver(port, this);
-        #elif PIPE_RESOLVER
-        PipeReaderConnectionResolver resolver = new PipeReaderConnectionResolver(port, this);
-        #elif PIPELINES_RESOLVER
-        PipelinesConnectionResolver resolver = new PipelinesConnectionResolver(port, this);
-        #elif IOCP_RESOLVER
-        IOCPConnectionResolver resolver = new IOCPConnectionResolver(port, this);
-        #else
-        SemaphoneTCPConnectionResolver resolver = new SemaphoneTCPConnectionResolver(port, this);
-        #endif
+#if SOCKET_RESOLVER
+        SocketConnectionResolver resolver = new(port, this);
+#elif LIBUV_RESOLVER
+        LibuvConnectionResolver resolver = new(port, this);
+#elif TCP_RESOLVER
+        TCPConnectionResolver resolver = new (port, this);
+#elif PIPE_READER_RESOLVER
+        PipeReaderConnectionResolver resolver = new (port, this);
+#elif PIPELINES_RESOLVER
+        PipelinesConnectionResolver resolver = new (port, this);
+#elif IOCP_RESOLVER
+        IOCPConnectionResolver resolver = new (port, this);
+#else
+        SemaphoneTCPConnectionResolver resolver = new (port, this);
+#endif
 
         await resolver.StartAsync(cancellationToken);
     }
 
-    public string? ProcessMessage(string message)
+    public string ProcessMessage(ReadOnlySpan<char> message)
     {
-        string[] cmd = _commandResolver.CommandArgs(message);
+        (string cmd, string key, string value) = _commandResolver.CommandArgs(message);
 
-        return cmd[0] switch
+        return cmd switch
         {
             "" => string.Empty,
-            Commands.Get => ProcessGet(cmd[1]),
+            Commands.Get => ProcessGet(ref key),
             Commands.FlushAll => ProcessFlushAll(),
-            Commands.Add => ProcessAdd(cmd[1], cmd[2], cmd[3], cmd[4], cmd[5]),
-            Commands.Set => ProcessSet(cmd[1], cmd[2], cmd[3], cmd[4], cmd[5]),
+            Commands.Add => ProcessAdd(ref key, ref value),
+            Commands.Set => ProcessSet(ref key, ref value),
             _ => "ERROR\r\n"
         };
     }
 
-    private string ProcessAdd(string key, string flags, string expiration, string bytesLen, string data)
+    private string ProcessAdd(ref string key, ref string data)
     {
-        if (_state.ContainsKey(key)) return "NOT_STORED\r\n";
-        _state[key] = data;
+        //if (_state.ContainsKey(key)) return "NOT_STORED\r\n";
+        //_state[key] = data;
         return "STORED\r\n";
     }
 
@@ -63,17 +67,18 @@ public class MemcachedServerImp(int port = 11211) : IMemcachedServer
         return "OK\r\n";
     }
 
-    string? ProcessGet(string key)
+    string ProcessGet(ref string key)
     {
-        if (!_state.TryGetValue(key, out string? val) && string.IsNullOrEmpty(val))
+        if (!_state.TryGetValue(key, out string val) && string.IsNullOrEmpty(val))
             return "END\r\n";
 
         return $"{val}\nEND\r\n";
     }
 
-    string ProcessSet(string key, string flags, string expiration, string bytesLen, string data)
+    string ProcessSet(ref string key, ref string data)
     {
-        _state[key] = data;
+        //_state.TryAdd(key, data);
+        //_state[key] = data;
         return "STORED\r\n";
     }
 }

@@ -2,5 +2,5 @@ namespace Rmauro.Servers.Memcached;
 
 public interface IMemcachedServer
 {
-    string? ProcessMessage(string message);
+    string ProcessMessage(ReadOnlySpan<char> message);
 }

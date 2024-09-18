@@ -8,13 +8,13 @@ namespace Rmauro.Servers.Memcached.Connections;
 
 public class IOCPConnectionResolver(int port, IMemcachedServer server) : IConnectionResolver
 {
-    static int _connectedClients = 0;
+    volatile int _connectedClients = 0;
 
     readonly int _port = port;
 
     readonly IMemcachedServer _server = server;
 
-    readonly int _maxClients = 100;
+    readonly int _maxClients = 500;
 
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -50,11 +50,11 @@ public class IOCPConnectionResolver(int port, IMemcachedServer server) : IConnec
         return Task.CompletedTask;
     }
 
-    void OnAcceptCompleted(object? sender, SocketAsyncEventArgs e)
+    void OnAcceptCompleted(object sender, SocketAsyncEventArgs e)
     {
         if (e.SocketError == SocketError.Success)
         {
-            Interlocked.Increment(ref _connectedClients);
+            _connectedClients = _connectedClients + 1;
 
             Log.Debug($"Client connected. Total clients: {_connectedClients}");
 
@@ -75,7 +75,7 @@ public class IOCPConnectionResolver(int port, IMemcachedServer server) : IConnec
         }
     }
 
-    void OnReceiveCompleted(object? sender, SocketAsyncEventArgs e)
+    void OnReceiveCompleted(object sender, SocketAsyncEventArgs e)
     {
         if (e.SocketError == SocketError.Success && e.BytesTransferred > 0)
         {
@@ -93,7 +93,7 @@ public class IOCPConnectionResolver(int port, IMemcachedServer server) : IConnec
         }
         else
         {
-            Console.WriteLine("Receive failed.");
+            Log.Error("Receive failed.");
             e.AcceptSocket?.Shutdown(SocketShutdown.Both);
             e.AcceptSocket?.Close();
             e.Dispose();

@@ -9,9 +9,7 @@ namespace Rmauro.Servers.Memcached.Connections;
 
 public class PipeReaderConnectionResolver(int port, IMemcachedServer server) : IConnectionResolver
 {
-    int _connectedClients = 0;
-
-    readonly int _maxClients = 100;
+    readonly int _maxClients = 500;
 
     readonly int _port = port;
 
@@ -29,7 +27,7 @@ public class PipeReaderConnectionResolver(int port, IMemcachedServer server) : I
         var listenSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
         listenSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
 
-        listenSocket.Listen(120);
+        listenSocket.Listen(_maxClients);
 
         Log.Information("Starting to listen on port {Port}. Waiting for connections", _port);
 
@@ -43,7 +41,7 @@ public class PipeReaderConnectionResolver(int port, IMemcachedServer server) : I
 
             Log.Information("Client has connected");
 
-            _ = ProcessLinesAsync(client, cancellationToken);
+            _ = Task.Factory.StartNew(async () => await ProcessLinesAsync(client, cancellationToken), cancellationToken);
         }
     }
 
@@ -55,33 +53,24 @@ public class PipeReaderConnectionResolver(int port, IMemcachedServer server) : I
         var stream = new NetworkStream(socket);
         var reader = PipeReader.Create(stream);
 
-        while (true)
+        while (cancellationToken.IsCancellationRequested == false)
         {
-            ReadResult result = await reader.ReadAsync();
+            ReadResult result = await reader.ReadAsync(cancellationToken);
             ReadOnlySequence<byte> buffer = result.Buffer;
 
-            //var msg = buffer.ToString();
-            //var msg = buffer.Slice(0, buffer.Length).ToString();
-            var msg = Encoding.UTF8.GetString(buffer);
+            string msg = Encoding.UTF8.GetString(buffer);
 
-            //while (TryReadLine(ref buffer, out ReadOnlySequence<byte> line))
-            {
-                // var response = _server.ProcessMessage(line.ToString());
-                var response = _server.ProcessMessage(msg);
+            var response = _server.ProcessMessage(msg);
 
-                await socket.SendAsync(Encoding.UTF8.GetBytes(response), SocketFlags.None);
-                // Process the line.
-                //ProcessLine(line);
-            }
 
-            // Tell the PipeReader how much of the buffer has been consumed.
+            var responseBytes = Encoding.UTF8.GetBytes(response);
+
+            await socket.SendAsync(responseBytes, SocketFlags.None);
+
             reader.AdvanceTo(buffer.Start, buffer.End);
 
-            // Stop reading if there's no more data coming.
             if (result.IsCompleted)
-            {
                 break;
-            }
         }
 
         // Mark the PipeReader as complete.
