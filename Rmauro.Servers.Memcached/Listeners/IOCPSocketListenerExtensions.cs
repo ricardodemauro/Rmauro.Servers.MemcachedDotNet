@@ -9,20 +9,21 @@ public static class IOCPSocketListenerExtensions
 {
     public static IServerBuilder UseIOCPSocketListener(
         this IServerBuilder builder,
-        int port)
+        int port, int maxConnections = 1024)
     {
-        return builder.UseIOCPSocketListener(new IPEndPoint(IPAddress.Any, port));
+        return builder.UseIOCPSocketListener(new IPEndPoint(IPAddress.Any, port), maxConnections);
     }
 
     public static IServerBuilder UseIOCPSocketListener(
         this IServerBuilder builder,
-        IPEndPoint endpoint)
+        IPEndPoint endpoint, int maxConnections)
     {
         builder.ConfigureServices(s =>
         {
             s.Configure<ListenerOptions>(c =>
             {
                 c.EndPoint = endpoint;
+                c.MaxConnections = maxConnections;
             });
 
             s.AddSingleton<ISocketListener, IOCPSocketListener>();

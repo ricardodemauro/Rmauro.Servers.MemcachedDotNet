@@ -34,7 +34,7 @@ public class ServerBuilder : IServerBuilder
         Services.AddLogging(builder =>
         {
             builder.AddSerilog(Log.Logger, true);
-        });
+        }).AddSerilog(Log.Logger, true);
 
         Services.AddSingleton<ICommandParser, BytesCommandResolver>();
 
