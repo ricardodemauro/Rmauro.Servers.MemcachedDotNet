@@ -37,6 +37,7 @@ public class IOCPSocketListener(
         {
             connectedClients = connectedClients + 1;
             var acceptSocket = _socket.Accept();
+            acceptSocket.NoDelay = true;
 
             var client = new IOCPSocketConnection(acceptSocket, connectedClients, process, logger);
             _connections.Push(client);
