@@ -46,71 +46,6 @@ public class IOCPSocketListener(
 
         return Task.CompletedTask;
     }
-
-
-
-    async Task ProcessClient(TcpClient client, ProcessRequestDelegate process, CancellationToken cancellationToken)
-    {
-        using var networkStream = client.GetStream();
-
-        var buffer = ArrayPool<byte>.Shared.Rent(4096);
-        var bufferMemory = buffer.AsMemory();
-        try
-        {
-            while (cancellationToken.IsCancellationRequested == false)
-            {
-
-                var bytesRead = await networkStream.ReadAsync(bufferMemory, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (bytesRead == 0)
-                {
-                    connectedClients = connectedClients - 1;
-
-                    Log.Information("Client {RemoteEndPoint} disconnected. Total clients connected is {ConnectedClients}",
-                        client.Client.RemoteEndPoint,
-                        connectedClients);
-
-                    client.Close();
-                    client.Dispose();
-                    break;
-                }
-
-#if DEBUG
-                Log.Debug("Get Request {Request}", Encoding.UTF8.GetString(bufferMemory.ToArray()));
-#endif
-
-                var response = process.Invoke(bufferMemory.Span);
-
-                if (response.Length == 0)
-                {
-                    Log.Debug("Got empty response. Ignoring message");
-                    continue;
-                }
-
-#if DEBUG
-                Log.Debug("Sending back response {Response}", Encoding.UTF8.GetString(response.ToArray()));
-#endif
-
-                await networkStream.WriteAsync(response, cancellationToken)
-                    .ConfigureAwait(false);
-
-                await networkStream.FlushAsync(cancellationToken)
-                    .ConfigureAwait(false);
-
-                Log.Debug("Flushed Stream");
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error when processing message");
-            throw;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
 }
 
 class IOCPSocketConnection
@@ -164,8 +99,7 @@ class IOCPSocketConnection
     private void ReadDone(SocketAsyncEventArgs e)
     {
         ArrayPool<byte>.Shared.Return(_buffer);
-        _socketClient.Close();
-        _socketClient.Dispose();
+        e.AcceptSocket.Close();
     }
 
 
@@ -184,7 +118,8 @@ class IOCPSocketConnection
                 return;
             }
 
-            SetBuffer(e);
+            e.SetBuffer(_buffer.AsMemory());
+            //SetBuffer(e);
 
             if (_logger.IsEnabled(LogLevel.Debug))
                 _logger.LogDebug("Get Request {Request}", Encoding.UTF8.GetString(_buffer.AsSpan().Slice(0, e.BytesTransferred)));
