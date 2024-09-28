@@ -22,6 +22,12 @@ public class MemcachedServer
         _commandResolver = commandParser ?? throw new ArgumentOutOfRangeException(nameof(commandParser));
     }
 
+    public MemcachedServer(ISocketListener listener, ILogger<MemcachedServer> logger)
+    {
+        _listener = listener ?? throw new ArgumentNullException(nameof(listener));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
     public static ServerBuilder CreateBuilder(string[] args)
         => new();
 
@@ -34,7 +40,7 @@ public class MemcachedServer
 
     public Memory<byte> ProcessRequest(in ReadOnlySpan<byte> data)
     {
-        var command = _commandResolver.CommandArgs(data);
+        var command = new SpansCommandResolver().CommandArgs(data);
 
         if (command.CommandType == CommandType.Get)
         {

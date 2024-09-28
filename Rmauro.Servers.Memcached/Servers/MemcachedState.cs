@@ -30,7 +30,7 @@ public class ByteArrayComparer : IEqualityComparer<byte[]>
 
 public sealed class MemcachedState
 {
-    readonly ConcurrentDictionary<byte[], byte[]> _state = new(Environment.ProcessorCount * 2, 20, ByteArrayComparer.Default);
+    readonly NonBlocking.ConcurrentDictionary<byte[], byte[]> _state = new(Environment.ProcessorCount * 2, 20, ByteArrayComparer.Default);
 
     readonly byte[] messageStored = "STORED\r\n".AsBytes();
 

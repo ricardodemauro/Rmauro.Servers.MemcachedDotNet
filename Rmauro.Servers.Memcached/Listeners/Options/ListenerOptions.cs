@@ -7,4 +7,6 @@ public sealed class ListenerOptions
     public IPEndPoint EndPoint { get; set; }
 
     public int MaxConnections { get; set; } = 4096;
+
+    public bool UseMemoryPool { get; set; } = false;
 }
