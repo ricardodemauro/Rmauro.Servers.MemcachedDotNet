@@ -16,7 +16,18 @@
 	//		}
 	// }
 
-	// Configure tool-specific properties.
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "bash ./script.sh",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": true,
+			"azureDnsAutoDetection": true,
+			"installDockerBuildx": true,
+			"installDockerComposeSwitch": true,
+			"version": "latest",
+			"dockerDashComposeVersion": "latest"
+		}
+	},
 	"customizations": {
 		"vscode": {
 			"extensions": [
