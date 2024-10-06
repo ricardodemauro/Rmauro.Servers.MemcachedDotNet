@@ -40,7 +40,8 @@ public class MemcachedServer
 
     public Memory<byte> ProcessRequest(in ReadOnlySpan<byte> data)
     {
-        var command = new SpansCommandResolver().CommandArgs(data);
+        //var command = new SpansCommandResolver().CommandArgs(data);
+        var command = _commandResolver.CommandArgs(data);
 
         if (command.CommandType == CommandType.Get)
         {

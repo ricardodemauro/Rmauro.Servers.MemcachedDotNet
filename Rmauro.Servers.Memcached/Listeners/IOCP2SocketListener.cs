@@ -18,16 +18,39 @@ public class IOCP2SocketListener(
 
     readonly Socket _socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
-    readonly List<IOCPSocketConnection> _connections = new();
+    readonly List<IOCPSocketConnection> _connections = new(4096);
+
+    #region Dispose
+
+    bool _disposedValue;
 
     public void Dispose()
     {
-        logger.LogInformation("Disposing {CountClients} clients", connectedClients);
-        _socket.Disconnect(false);
-        _socket.Dispose();
+        Dispose(true);
 
         GC.SuppressFinalize(this);
     }
+
+    void Dispose(bool disposing)
+    {
+        logger.LogInformation("Disposing {CountClients} clients", connectedClients);
+
+        if (!_disposedValue)
+        {
+            if (disposing)
+            {
+                logger.LogInformation("Disposing {CountClients} clients", connectedClients);
+                _socket.Disconnect(false);
+                _socket.Dispose();
+            }
+
+            _disposedValue = true;
+        }
+    }
+
+    ~IOCP2SocketListener() => Dispose(false);
+
+    #endregion Dispose
 
     public Task Start(ProcessRequestDelegate process, CancellationToken cancellationToken)
     {
@@ -62,11 +85,6 @@ public class IOCP2SocketListener(
 
         readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        public void Dispose()
-        {
-            ArrayPool<byte>.Shared.Return(_buffer);
-        }
-
         internal void Start()
         {
             var receiveArgs = useMemoryPool ? SocketAsyncEventArgsPool.Get() : new SocketAsyncEventArgs(unsafeSuppressExecutionContextFlow: true);
@@ -89,10 +107,12 @@ public class IOCP2SocketListener(
                 if (e.BytesTransferred == 0 || e.SocketError != SocketError.Success)
                 {
                     ArrayPool<byte>.Shared.Return(_buffer);
+                    _socketClient.Shutdown(SocketShutdown.Both);
                     _socketClient.Close();
-                    _socketClient.Dispose();
 
                     if (useMemoryPool) SocketAsyncEventArgsPool.Return(e);
+
+                    GC.SuppressFinalize(true);
 
                     return;
                 }

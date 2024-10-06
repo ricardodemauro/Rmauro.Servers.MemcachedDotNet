@@ -25,16 +25,13 @@ public class ServerBuilder : IServerBuilder
     public IServerBuilder ConfigureServices(Action<IServiceCollection> configureServices)
     {
         //configureServices.Invoke(Services);
-        configureServices(this.Services);
+        configureServices(Services);
         return this;
     }
 
     public MemcachedServer Build()
     {
-        Services.AddLogging(builder =>
-        {
-            builder.AddSerilog(Log.Logger, true);
-        }).AddSerilog(Log.Logger, true);
+        Services.AddLogging().AddSerilog(Log.Logger, true);
 
         Services.AddSingleton<ICommandParser, BytesCommandResolver>();
 

@@ -7,22 +7,22 @@ class SocketPoolPolicy : IPooledObjectPolicy<SocketAsyncEventArgs>
 {
     public SocketAsyncEventArgs Create()
     {
-        return new SocketAsyncEventArgs()
+        return new SocketAsyncEventArgs(true)
         {
-            DisconnectReuseSocket = true
+            DisconnectReuseSocket = true,
         };
     }
 
     public bool Return(SocketAsyncEventArgs obj)
     {
-        obj.ConnectSocket?.Disconnect(true);
+        obj.ConnectSocket?.Disconnect(false);
         return true;
     }
 }
 
 public static class SocketAsyncEventArgsPool
 {
-    static readonly ObjectPool<SocketAsyncEventArgs> _pool = new DefaultObjectPool<SocketAsyncEventArgs>(new SocketPoolPolicy(), 1024);
+    static readonly ObjectPool<SocketAsyncEventArgs> _pool = new DefaultObjectPool<SocketAsyncEventArgs>(new SocketPoolPolicy(), 60);
 
 
     public static SocketAsyncEventArgs Get() => _pool.Get();

@@ -16,8 +16,7 @@ Console.WriteLine("Socket Listener {0}", socketListener);
 Console.WriteLine("Port {0}", port);
 
 Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    //.WriteTo.FastConsole()
+    .WriteTo.Async(c => c.Console())
     .MinimumLevel.Is((LogEventLevel)Enum.Parse(typeof(LogEventLevel), logLevel))
     .CreateLogger();
 

@@ -2,10 +2,10 @@
 using Microsoft.Extensions.Options;
 using Rmauro.Servers.Memcached.Listeners.Options;
 using Rmauro.Servers.Memcached.Pools;
-using Serilog;
 using System.Buffers;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 //based on: https://medium.com/@Alikhalili/building-a-high-performance-tcp-server-from-scratch-a8ede35c4cc2
@@ -19,16 +19,35 @@ public class IOCPSocketListener(
 
     readonly Socket _socket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 
-    List<IOCPSocketConnection> _connections = new(1024);
+    #region Dispose
+
+    bool _disposedValue;
 
     public void Dispose()
     {
-        logger.LogInformation("Disposing {CountClients} clients", connectedClients);
-
-        _socket.Dispose();
+        Dispose(true);
 
         GC.SuppressFinalize(this);
     }
+
+    void Dispose(bool disposing)
+    {
+        logger.LogInformation("Disposing {CountClients} clients", connectedClients);
+
+        if (!_disposedValue)
+        {
+            if (disposing)
+            {
+                _socket?.Dispose();
+            }
+
+            _disposedValue = true;
+        }
+    }
+
+    ~IOCPSocketListener() => Dispose(false);
+
+    #endregion Dispose
 
     public Task Start(ProcessRequestDelegate process, CancellationToken cancellationToken)
     {
@@ -44,7 +63,7 @@ public class IOCPSocketListener(
             acceptSocket.NoDelay = true;
 
             var client = new IOCPSocketConnection(acceptSocket, connectedClients, process, logger, options.Value.UseMemoryPool);
-            _connections.Add(client);
+
             client.Start();
         }
 
@@ -55,8 +74,8 @@ public class IOCPSocketListener(
         Socket socketClient,
         int connectionId,
         ProcessRequestDelegate processRequest,
-        Microsoft.Extensions.Logging.ILogger logger,
-        bool useObjectPool)
+        ILogger logger,
+        bool useObjectPool) : IDisposable
     {
         readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(4096);
 
@@ -64,16 +83,44 @@ public class IOCPSocketListener(
 
         readonly int _connectionId = connectionId;
 
-        ProcessRequestDelegate _processRequestDelegate = processRequest ?? throw new ArgumentNullException(nameof(processRequest));
+        readonly ProcessRequestDelegate _processRequestDelegate = processRequest ?? throw new ArgumentNullException(nameof(processRequest));
 
-        Microsoft.Extensions.Logging.ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        readonly ILogger _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        int _bytesRead = 0;
+        readonly int _bytesRead = 0;
+
+        #region Dispose
+
+        bool _disposedValue;
 
         public void Dispose()
         {
-            ArrayPool<byte>.Shared.Return(_buffer);
+            Dispose(true);
+
+            GC.SuppressFinalize(this);
         }
+
+        void Dispose(bool disposing)
+        {
+            logger.LogInformation("Disposing {ConnectionId}", _connectionId);
+
+            if (!_disposedValue)
+            {
+                if (disposing)
+                {
+                    ArrayPool<byte>.Shared.Return(_buffer);
+
+                    _socketClient.Shutdown(SocketShutdown.Both);
+                    _socketClient.Close();
+                }
+
+                _disposedValue = true;
+            }
+        }
+
+        ~IOCPSocketConnection() => Dispose(false);
+
+        #endregion Dispose
 
         internal void Start()
         {
@@ -93,11 +140,9 @@ public class IOCPSocketListener(
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadDone(SocketAsyncEventArgs e)
         {
-            ArrayPool<byte>.Shared.Return(_buffer);
-            _socketClient.Close();
-            _socketClient.Dispose();
-
             if (useObjectPool) SocketAsyncEventArgsPool.Return(e);
+
+            Dispose();
         }
 
 
@@ -119,12 +164,12 @@ public class IOCPSocketListener(
                 SetBuffer(e);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    _logger.LogDebug("Get Request {Request}", Encoding.UTF8.GetString(_buffer.AsSpan().Slice(0, e.BytesTransferred)));
+                    _logger.LogDebug("[{ConnectionId}]Get Request {Request}", _connectionId, Encoding.UTF8.GetString(_buffer.AsSpan().Slice(0, e.BytesTransferred)));
 
                 var response = _processRequestDelegate(_buffer.AsSpan().Slice(0, e.BytesTransferred));
 
                 if (_logger.IsEnabled(LogLevel.Debug))
-                    Log.Debug("Sending back response {Response}", Encoding.UTF8.GetString(response.ToArray()));
+                    _logger.LogDebug("[{ConnectionId}]Sending back response {Response}", _connectionId, Encoding.UTF8.GetString(response.ToArray()));
 
                 _socketClient.Send(response.Span);
 
