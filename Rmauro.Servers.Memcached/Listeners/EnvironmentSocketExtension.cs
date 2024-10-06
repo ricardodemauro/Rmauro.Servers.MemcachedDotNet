@@ -1,26 +1,21 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Rmauro.Servers.Memcached.Listeners.Options;
 using Rmauro.Servers.Memcached.Servers;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Rmauro.Servers.Memcached.Listeners;
 
 public static class EnvironmentSocketExtension
 {
-    public static IServerBuilder UseListener(
+    public static IServerBuilder UseEnvironmentListener(
         this IServerBuilder builder,
         int port,
         int maxConcurrentConnections)
     {
-        return builder.UseListener(new IPEndPoint(IPAddress.Any, port), maxConcurrentConnections);
+        return builder.UseEnvironmentListener(new IPEndPoint(IPAddress.Any, port), maxConcurrentConnections);
     }
 
-    public static IServerBuilder UseListener(
+    public static IServerBuilder UseEnvironmentListener(
         this IServerBuilder builder,
         IPEndPoint endpoint,
         int maxConcurrentConnections)

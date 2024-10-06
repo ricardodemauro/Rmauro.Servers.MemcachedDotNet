@@ -15,16 +15,12 @@ public interface IServerBuilder
 
 public class ServerBuilder : IServerBuilder
 {
-    public ServerBuilder()
-    {
-        Services = new ServiceCollection();
-    }
+    public ServerBuilder() => Services = new ServiceCollection();
 
     public IServiceCollection Services { get; private set; }
 
     public IServerBuilder ConfigureServices(Action<IServiceCollection> configureServices)
     {
-        //configureServices.Invoke(Services);
         configureServices(Services);
         return this;
     }

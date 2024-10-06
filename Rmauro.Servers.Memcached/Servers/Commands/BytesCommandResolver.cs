@@ -1,7 +1,4 @@
-﻿using System;
-using System.Text;
-
-namespace Rmauro.Servers.Memcached.Servers.Commands;
+﻿namespace Rmauro.Servers.Memcached.Servers.Commands;
 
 public class BytesCommandResolver : ICommandParser
 {

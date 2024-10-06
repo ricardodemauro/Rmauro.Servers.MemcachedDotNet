@@ -24,7 +24,7 @@ Console.WriteLine("Starting at {0}", port);
 
 var server = MemcachedServer.CreateBuilder(args)
     //.UseTcpClientListener(8888)
-    .UseListener(int.Parse(port), int.Parse(maxConnections))
+    .UseEnvironmentListener(int.Parse(port), int.Parse(maxConnections))
     .Build();
 
 await server.Start(CancellationToken.None);
