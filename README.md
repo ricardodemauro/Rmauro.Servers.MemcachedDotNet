@@ -80,7 +80,7 @@ docker run --network host redislabs/memtier_benchmark -s 192.168.1.210 -p 8888 -
 
 ## TODO List
 
-- [] Add support `expTime`
-- [] Add support to `noreply`
-- [] Add `replace`: Replace a key value pair if present
-- [] Add other commands
+- [ ] Add support `expTime`
+- [ ] Add support to `noreply`
+- [ ] Add `replace`: Replace a key value pair if present
+- [ ] Add other commands
