@@ -11,7 +11,6 @@ The server supports the following commands:
 - `get`: Get the value corresponding to the provided key
 - `set`: Set a key value pair
 - `add`: Add a key value pair if not already present
-- !TODO: `replace`: Replace a key value pair if present
 - `flush_all`: Replace a key value pair if present
 
 The `command.ts` file exports a function that parses the information about the command sent by the client and returns an instance of `MemCommand` class which is used by the server to handle the execution of the command.
@@ -83,3 +82,5 @@ docker run --network host redislabs/memtier_benchmark -s 192.168.1.210 -p 8888 -
 
 [] Add support `expTime`
 [] Add support to `noreply`
+[] Add `replace`: Replace a key value pair if present
+[] Add other commands
